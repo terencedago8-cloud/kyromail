@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Mon profil — KyroMail{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Mon profil</h1>
+    <p class="muted">Vos informations et la sécurité de votre compte.</p>
+  </div>
+</div>
+
+<div class="profile-grid">
+  <section class="card-block">
+    <div class="card-block-head"><h2>Informations</h2></div>
+    <div class="profile-ident">
+      <span class="avatar avatar--blue avatar--xl">{{ user.full_name[:2]|upper }}</span>
+      <div>
+        <p><strong>{{ user.full_name }}</strong></p>
+        <p class="mono muted">{{ user.email }}</p>
+        <p>
+          <span class="badge badge--role badge--{{ user.role }}">{{ roles[user.role] }}</span>
+          <span class="tag {{ 'tag--read' if user.active else 'tag--off' }}">
+            {{ 'Compte actif' if user.active else 'Compte désactivé' }}
+          </span>
+        </p>
+      </div>
+    </div>
+
+    <dl class="def-list">
+      <div><dt>Adresse interne</dt><dd class="mono">{{ user.email }}</dd></div>
+      <div><dt>Rôle</dt><dd>{{ roles[user.role] }}</dd></div>
+      <div><dt>Compte créé le</dt><dd>{{ user.created_at|dt }}</dd></div>
+      <div><dt>Dernière connexion</dt><dd>{{ user.last_login|dt }}</dd></div>
+    </dl>
+
+    <p class="form-hint">
+      Pour changer votre adresse ou votre rôle, contactez l'administration du collège.
+    </p>
+  </section>
+
+  <section class="card-block">
+    <div class="card-block-head"><h2>Modifier mon nom</h2></div>
+    <form method="post" action="{{ url_for('profile') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="identity">
+      <div class="field">
+        <label for="full_name">Nom complet</label>
+        <input id="full_name" name="full_name" type="text" maxlength="80" required
+               value="{{ user.full_name }}">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card-block">
+    <div class="card-block-head"><h2>Changer mon mot de passe</h2></div>
+    <form method="post" action="{{ url_for('profile') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="action" value="password">
+      <div class="field">
+        <label for="current_password">Mot de passe actuel</label>
+        <input id="current_password" name="current_password" type="password" required
+               autocomplete="current-password">
+      </div>
+      <div class="field">
+        <label for="new_password">Nouveau mot de passe</label>
+        <input id="new_password" name="new_password" type="password" required
+               minlength="8" autocomplete="new-password">
+        <p class="form-hint">8 caractères minimum, avec au moins une lettre et un chiffre.</p>
+      </div>
+      <div class="field">
+        <label for="confirm_password">Confirmation</label>
+        <input id="confirm_password" name="confirm_password" type="password" required
+               minlength="8" autocomplete="new-password">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Changer le mot de passe</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card-block">
+    <div class="card-block-head"><h2>Notifications</h2></div>
+    <p class="muted">
+      KyroMail affiche en permanence le nombre de messages non lus et vous alerte
+      à l'arrivée d'un nouveau message pendant que la page est ouverte.
+    </p>
+    <div class="form-actions">
+      <button class="btn btn-ghost" id="enable-notifications" type="button">
+        Activer les notifications du navigateur
+      </button>
+      <span class="muted" id="notifications-status"></span>
+    </div>
+  </section>
+</div>
+{% endblock %}

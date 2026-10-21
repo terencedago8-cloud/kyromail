@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Boîte de réception — KyroMail{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Boîte de réception</h1>
+    <p class="muted">
+      {{ items|length }} message(s) affiché(s)
+      {% if unread_inbox %} &middot; <strong>{{ unread_inbox }}</strong> non lu(s){% endif %}
+    </p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('compose') }}">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M4 20h4l10-10a2.83 2.83 0 0 0-4-4L4 16v4Z" fill="currentColor"/>
+    </svg>
+    Rédiger
+  </a>
+</div>
+
+<div class="toolbar">
+  <form class="search-form" method="get" action="{{ url_for('inbox') }}" role="search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Rechercher un expéditeur, un objet, un mot…">
+    <input type="hidden" name="filter" value="{{ filter }}">
+    <button class="btn btn-ghost" type="submit">Rechercher</button>
+    {% if q %}
+      <a class="btn btn-ghost" href="{{ url_for('inbox', filter=filter) }}">Effacer</a>
+    {% endif %}
+  </form>
+
+  <nav class="filters" aria-label="Filtres">
+    <a class="filter-chip {{ 'active' if filter == 'all' }}"
+       href="{{ url_for('inbox', filter='all', q=q) }}">Tous</a>
+    <a class="filter-chip {{ 'active' if filter == 'unread' }}"
+       href="{{ url_for('inbox', filter='unread', q=q) }}">Non lus</a>
+    <a class="filter-chip {{ 'active' if filter == 'read' }}"
+       href="{{ url_for('inbox', filter='read', q=q) }}">Lus</a>
+  </nav>
+</div>
+
+{% if items %}
+  <ul class="msg-list">
+    {% for item in items %}
+      {% set unread = not item.read_at %}
+      <li>
+        <a class="msg-row {{ 'msg-row--unread' if unread }}"
+           href="{{ url_for('view_message', message_id=item.id) }}">
+          <span class="unread-dot" aria-label="Non lu"></span>
+          <span class="avatar avatar--blue">{{ item.sender_name[:2]|upper }}</span>
+          <span class="msg-main">
+            <span class="msg-line">
+              <strong>{{ item.sender_name }}</strong>
+              <span class="badge badge--role badge--{{ item.sender_role }}">{{ roles[item.sender_role] }}</span>
+            </span>
+            <span class="msg-subject">{{ item.subject }}</span>
+            <span class="msg-snippet">{{ item.body|snippet(120) }}</span>
+          </span>
+          <span class="msg-meta">
+            <time datetime="{{ item.sent_at }}">{{ item.sent_at|dt }}</time>
+            {% if unread %}<span class="tag tag--unread">Non lu</span>{% endif %}
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty-state">
+    <span class="empty-icon">&#128230;</span>
+    <h2>{% if q %}Aucun message trouvé{% else %}Votre boîte est vide{% endif %}</h2>
+    <p class="muted">
+      {% if q %}
+        Aucun message ne correspond à «&nbsp;{{ q }}&nbsp;». Essayez un autre mot-clé
+        ou changez de filtre.
+      {% else %}
+        Les messages que vous recevez s'affichent ici.
+      {% endif %}
+    </p>
+    <a class="btn btn-primary" href="{{ url_for('compose') }}">Rédiger un message</a>
+  </div>
+{% endif %}
+{% endblock %}

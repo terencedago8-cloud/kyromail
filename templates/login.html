@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}Connexion — KyroMail{% endblock %}
+
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <svg viewBox="0 0 32 32" width="44" height="44" aria-hidden="true">
+        <rect x="1" y="1" width="30" height="30" rx="8" fill="#2563eb"/>
+        <rect x="7" y="11" width="18" height="11" rx="2" fill="#ffffff"/>
+        <path d="M7.5 12.5 16 18.5 24.5 12.5" fill="none" stroke="#2563eb" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <h1>Kyro<span>Mail</span></h1>
+        <p class="muted">Messagerie interne du collège</p>
+      </div>
+    </div>
+
+    <form class="auth-form" method="post" autocomplete="on"
+          action="{{ url_for('login', next=request.args.get('next')) if request.args.get('next') else url_for('login') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+      <div class="field">
+        <label for="email">Adresse mail</label>
+        <input id="email" name="email" type="email" required maxlength="120"
+               placeholder="prenom.nom@{{ internal_domain }}"
+               value="{{ request.form.get('email', '') if request.method == 'POST' else '' }}"
+               autocomplete="username" autofocus>
+      </div>
+
+      <div class="field">
+        <label for="password">Mot de passe</label>
+        <input id="password" name="password" type="password" required
+               placeholder="Votre mot de passe" autocomplete="current-password">
+      </div>
+
+      <button class="btn btn-primary btn-block btn-lg" type="submit">Se connecter</button>
+
+      <p class="form-hint">
+        Les comptes sont créés par l'administration du collège : il n'y a pas
+        d'inscription libre.
+      </p>
+    </form>
+  </div>
+
+  <p class="auth-foot">
+    <a href="{{ url_for('landing') }}">&larr; Retour à l'accueil</a>
+  </p>
+</div>
+{% endblock %}

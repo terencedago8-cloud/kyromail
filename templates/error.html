@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}{{ code }} — {{ title }} — KyroMail{% endblock %}
+
+{% block content %}
+<div class="error-wrap">
+  <div class="error-card">
+    <span class="error-code">{{ code if code else '!' }}</span>
+    <h1>{{ title }}</h1>
+    <p class="muted">{{ message }}</p>
+
+    <div class="error-actions">
+      {% if current_user %}
+        <a class="btn btn-primary" href="{{ url_for('inbox') }}">Retour à la boîte de réception</a>
+        <a class="btn btn-ghost" href="{{ url_for('landing') }}">Accueil</a>
+      {% else %}
+        <a class="btn btn-primary" href="{{ url_for('login') }}">Se connecter</a>
+        <a class="btn btn-ghost" href="{{ url_for('landing') }}">Accueil</a>
+      {% endif %}
+    </div>
+
+    <p class="form-hint">
+      Si le problème persiste, contactez l'administration du collège.
+    </p>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{{ message.subject }} — KyroMail{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <a class="back-link" href="{{ url_for('sent') if is_sender else url_for('inbox') }}">
+      &larr; {{ 'Messages envoyés' if is_sender else 'Boîte de réception' }}
+    </a>
+    <h1>{{ message.subject }}</h1>
+  </div>
+</div>
+
+<article class="message-card">
+  <header class="message-head">
+    <span class="avatar avatar--blue avatar--lg">{{ message.sender_name[:2]|upper }}</span>
+    <div class="message-ident">
+      <p>
+        <strong>{{ message.sender_name }}</strong>
+        <span class="badge badge--role badge--{{ message.sender_role }}">{{ roles[message.sender_role] }}</span>
+        {% if is_sender %}<span class="tag tag--read">Envoyé</span>{% endif %}
+      </p>
+      <p class="muted">
+        &lt;{{ message.sender_email }}&gt;
+        &rarr; {{ message.recipient_name }} &lt;{{ message.recipient_email }}&gt;
+      </p>
+    </div>
+    <div class="message-dates">
+      <time datetime="{{ message.sent_at }}">Envoyé le {{ message.sent_at|dt }}</time>
+      {% if message.read_at %}
+        <span class="muted">Lu le {{ message.read_at|dt }}</span>
+      {% elif not is_sender %}
+        <span class="tag tag--unread">Non lu</span>
+      {% endif %}
+    </div>
+  </header>
+
+  <div class="message-body">{{ message.body }}</div>
+
+  <footer class="message-actions">
+    {% if not is_sender %}
+      <a class="btn btn-primary"
+         href="{{ url_for('compose', to=message.sender_id, subject='Re: ' ~ message.subject) }}">
+        Répondre
+      </a>
+    {% else %}
+      <a class="btn btn-primary"
+         href="{{ url_for('compose', to=message.recipient_id, subject='Re: ' ~ message.subject) }}">
+        Renvoyer
+      </a>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('delete_message', message_id=message.id) }}"
+          data-confirm="Supprimer définitivement ce message ?">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="side" value="{{ 'sent' if is_sender else 'inbox' }}">
+      <button class="btn btn-danger" type="submit">Supprimer</button>
+    </form>
+
+    <a class="btn btn-ghost" href="{{ url_for('sent') if is_sender else url_for('inbox') }}">
+      Retour
+    </a>
+  </footer>
+</article>
+{% endblock %}

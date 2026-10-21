@@ -1,0 +1,7 @@
+# KyroMail - dépendances Python
+# Installer avec : pip install -r requirements.txt
+Flask>=3.0,<4.0
+Werkzeug>=3.0,<4.0
+
+# Serveur WSGI de production (utilisé par Render / Railway / waitress-serve)
+waitress>=3.0

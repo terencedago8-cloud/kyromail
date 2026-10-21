@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}KyroMail — La messagerie de votre collège{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <span class="eyebrow">Messagerie scolaire</span>
+    <h1>La messagerie interne de votre <span>collège</span></h1>
+    <p>
+      KyroMail réunit la direction, les professeurs, les surveillants et les élèves
+      dans une seule messagerie sécurisée : comptes créés par l'administration,
+      rôles du collège, boîte de réception, notifications et journal des actions.
+    </p>
+    <div class="hero-actions">
+      <a class="btn btn-primary btn-lg" href="{{ url_for('login') }}">Se connecter</a>
+      <a class="btn btn-ghost btn-lg" href="#fonctionnalites">Découvrir</a>
+    </div>
+    <ul class="hero-points">
+      <li>Mots de passe hachés</li>
+      <li>Protection CSRF</li>
+      <li>Requêtes SQL paramétrées</li>
+    </ul>
+  </div>
+
+  <div class="hero-visual" aria-hidden="true">
+    <div class="mock-card mock-card--inbox">
+      <div class="mock-head">
+        <span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span>
+        <strong>Boîte de réception</strong>
+      </div>
+      <div class="mock-row mock-row--active">
+        <span class="avatar avatar--blue">DI</span>
+        <span><strong>Direction</strong><small>Réunion du conseil de classe</small></span>
+        <em>09:12</em>
+      </div>
+      <div class="mock-row">
+        <span class="avatar avatar--slate">MB</span>
+        <span><strong>M. Bernard</strong><small>Devoir de maths pour le 5e B</small></span>
+        <em>Hier</em>
+      </div>
+      <div class="mock-row">
+        <span class="avatar avatar--green">SL</span>
+        <span><strong>Mme Lefèvre</strong><small>Sortie scolaire : autorisations</small></span>
+        <em>Lun.</em>
+      </div>
+    </div>
+    <div class="mock-card mock-card--badge">
+      <span class="mock-bell">&#9679;</span>
+      <strong>3 messages non lus</strong>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="fonctionnalites">
+  <div class="section-head">
+    <h2>Tout ce qu'une messagerie scolaire doit faire</h2>
+    <p class="muted">Une interface claire, en français, utilisable sur ordinateur, tablette et téléphone.</p>
+  </div>
+
+  <div class="features">
+    <article class="feature-card">
+      <span class="feature-icon">&#9993;</span>
+      <h3>Comptes administrés</h3>
+      <p>Les comptes sont créés uniquement par un administrateur : nom, adresse interne,
+      mot de passe haché et rôle.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">&#9733;</span>
+      <h3>Rôles du collège</h3>
+      <p>Direction, professeur, surveillant, élève : chaque rôle communique selon des
+      règles d'accès configurables.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">&#128230;</span>
+      <h3>Boîte de réception</h3>
+      <p>Messages reçus et envoyés, indicateur de non-lus, lecture, réponse et
+      suppression en deux clics.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">&#128269;</span>
+      <h3>Recherche et filtres</h3>
+      <p>Trouvez un expéditeur, un objet ou un mot-clé ; filtrez entre tous, non lus
+      et lus.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">&#128276;</span>
+      <h3>Notifications</h3>
+      <p>Compteur de messages non lus en temps réel et alerte à l'arrivée d'un nouveau
+      message.</p>
+    </article>
+    <article class="feature-card">
+      <span class="feature-icon">&#128737;</span>
+      <h3>Administration</h3>
+      <p>Tableau de bord, statistiques, matrice d'accès entre rôles et journal des
+      actions administratives.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section section--alt">
+  <div class="section-head">
+    <h2>Les rôles du collège</h2>
+    <p class="muted">Cinq rôles, des responsabilités claires.</p>
+  </div>
+  <div class="roles-grid">
+    <article class="role-card">
+      <h3>Administrateur</h3>
+      <p>Gère toute la messagerie : comptes, rôles, mots de passe, règles d'accès et
+      journal.</p>
+    </article>
+    <article class="role-card">
+      <h3>Direction</h3>
+      <p>Compte réservé à la direction : circulaires, décisions et échanges officiels.</p>
+    </article>
+    <article class="role-card">
+      <h3>Professeur</h3>
+      <p>Communique avec les élèves et les autres personnels autorisés.</p>
+    </article>
+    <article class="role-card">
+      <h3>Surveillant</h3>
+      <p>Communique avec les élèves et les personnels autorisés.</p>
+    </article>
+    <article class="role-card">
+      <h3>Élève</h3>
+      <p>Envoie et reçoit des messages selon les règles d'accès du collège.</p>
+    </article>
+  </div>
+</section>
+
+<section class="section">
+  <div class="split">
+    <div>
+      <h2>Sécurité et conformité</h2>
+      <ul class="check-list">
+        <li>Mots de passe hachés : jamais enregistrés en clair.</li>
+        <li>Requêtes SQL paramétrées, protection CSRF et contrôle d'accès par rôle.</li>
+        <li>Sessions sécurisées : régénération à la connexion, cookies
+        <code>HttpOnly</code> et <code>SameSite</code>.</li>
+        <li>Journal des actions administratives importantes.</li>
+        <li>HTTPS, sauvegardes et politique de conservation des données à prévoir pour
+        un usage réel.</li>
+        <li>Vérification des obligations de confidentialité concernant les mineurs avant
+        toute mise en production.</li>
+      </ul>
+    </div>
+    <aside class="notice">
+      <h3>Adresses internes</h3>
+      <p>Les adresses générées par défaut utilisent le domaine de démonstration
+      <code>@{{ internal_domain }}</code>. Ce sont des <strong>adresses internes</strong>,
+      elles ne reçoivent ni n'envoient de courrier sur Internet.</p>
+      <p>Une architecture permettant de connecter un domaine réel et un service de
+      messagerie adapté est décrite dans le <code>README.md</code>.</p>
+    </aside>
+  </div>
+</section>
+
+<section class="section cta-band">
+  <div>
+    <h2>Prêt à ouvrir votre boîte de réception ?</h2>
+    <p class="muted">Votre compte a été créé par l'administration du collège.</p>
+  </div>
+  <a class="btn btn-light btn-lg" href="{{ url_for('login') }}">Accéder à la connexion</a>
+</section>
+{% endblock %}

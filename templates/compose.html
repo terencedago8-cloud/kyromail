@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Rédiger — KyroMail{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Rédiger un message</h1>
+    <p class="muted">Seuls les comptes autorisés par les règles d'accès du collège sont proposés.</p>
+  </div>
+</div>
+
+<form class="form-card" method="post" action="{{ url_for('compose') }}" id="compose-form">
+  <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+  <div class="field">
+    <label for="recipient_id">Destinataire</label>
+    <select id="recipient_id" name="recipient_id" required>
+      <option value="" disabled {% if not values.recipient_id %}selected{% endif %}>
+        — Choisir un destinataire —
+      </option>
+      {% for role_label, group in recipients %}
+        <optgroup label="{{ role_label }}">
+          {% for person in group %}
+            <option value="{{ person.id }}"
+                    {% if values.recipient_id and values.recipient_id|int(-1) == person.id %}selected{% endif %}>
+              {{ person.full_name }} — {{ person.email }}
+            </option>
+          {% endfor %}
+        </optgroup>
+      {% endfor %}
+    </select>
+    <p class="form-hint">
+      Les adresses <code>@{{ internal_domain }}</code> sont internes au collège
+      (démonstration) : elles ne sont pas de véritables adresses Internet.
+    </p>
+  </div>
+
+  <div class="field">
+    <label for="subject">Objet</label>
+    <input id="subject" name="subject" type="text" maxlength="200" required
+           placeholder="Ex. : Réunion du conseil de classe" value="{{ values.subject }}">
+    <span class="char-count" data-target="subject" data-max="200">0 / 200</span>
+  </div>
+
+  <div class="field">
+    <label for="body">Message</label>
+    <textarea id="body" name="body" rows="12" maxlength="20000" required
+              placeholder="Rédigez votre message…">{{ values.body }}</textarea>
+    <span class="char-count" data-target="body" data-max="20000">0 / 20000</span>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn btn-primary btn-lg" type="submit">Envoyer le message</button>
+    <a class="btn btn-ghost" href="{{ url_for('inbox') }}">Annuler</a>
+  </div>
+</form>
+
+{% if not recipients %}
+  <div class="empty-state">
+    <span class="empty-icon">&#128274;</span>
+    <h2>Aucun destinataire disponible</h2>
+    <p class="muted">Les règles d'accès actuelles ne vous permettent d'écrire à personne pour le moment.
+    Contactez l'administration.</p>
+  </div>
+{% endif %}
+{% endblock %}

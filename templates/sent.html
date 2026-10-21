@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block title %}Messages envoyés — KyroMail{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Messages envoyés</h1>
+    <p class="muted">{{ items|length }} message(s) affiché(s)</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('compose') }}">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M4 20h4l10-10a2.83 2.83 0 0 0-4-4L4 16v4Z" fill="currentColor"/>
+    </svg>
+    Rédiger
+  </a>
+</div>
+
+<div class="toolbar">
+  <form class="search-form" method="get" action="{{ url_for('sent') }}" role="search">
+    <input type="search" name="q" value="{{ q }}" placeholder="Rechercher un destinataire, un objet, un mot…">
+    <button class="btn btn-ghost" type="submit">Rechercher</button>
+    {% if q %}
+      <a class="btn btn-ghost" href="{{ url_for('sent') }}">Effacer</a>
+    {% endif %}
+  </form>
+</div>
+
+{% if items %}
+  <ul class="msg-list">
+    {% for item in items %}
+      <li>
+        <a class="msg-row" href="{{ url_for('view_message', message_id=item.id) }}">
+          <span class="unread-dot" aria-hidden="true"></span>
+          <span class="avatar avatar--slate">{{ item.recipient_name[:2]|upper }}</span>
+          <span class="msg-main">
+            <span class="msg-line">
+              <strong>&rarr; {{ item.recipient_name }}</strong>
+              <span class="badge badge--role badge--{{ item.recipient_role }}">{{ roles[item.recipient_role] }}</span>
+            </span>
+            <span class="msg-subject">{{ item.subject }}</span>
+            <span class="msg-snippet">{{ item.body|snippet(120) }}</span>
+          </span>
+          <span class="msg-meta">
+            <time datetime="{{ item.sent_at }}">{{ item.sent_at|dt }}</time>
+            <span class="tag {{ 'tag--read' if item.read_at else 'tag--pending' }}">
+              {{ 'Lu' if item.read_at else 'Non lu' }}
+            </span>
+          </span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <div class="empty-state">
+    <span class="empty-icon">&#9993;</span>
+    <h2>{% if q %}Aucun message trouvé{% else %}Aucun message envoyé{% endif %}</h2>
+    <p class="muted">
+      {% if q %}
+        Rien ne correspond à «&nbsp;{{ q }}&nbsp;» dans vos messages envoyés.
+      {% else %}
+        Les messages que vous envoyez apparaissent ici.
+      {% endif %}
+    </p>
+    <a class="btn btn-primary" href="{{ url_for('compose') }}">Rédiger un message</a>
+  </div>
+{% endif %}
+{% endblock %}

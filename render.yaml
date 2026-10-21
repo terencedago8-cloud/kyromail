@@ -1,0 +1,40 @@
+# Blueprint Render — déploiement de KyroMail sur https://mail.kyromail.fr
+# Documentation : https://render.com/docs/blueprint-spec
+#
+# Notes importantes :
+#   * SQLite a besoin d'un disque persistant → plan Starter ou supérieur
+#     (le plan gratuit de Render efface le disque à chaque déploiement).
+#   * KYROMAIL_SECRET_KEY est généré automatiquement : ne jamais le versionner.
+#   * KYROMAIL_ADMIN_EMAIL / KYROMAIL_ADMIN_PASSWORD sont à renseigner une
+#     seule fois (premier démarrage), puis à retirer.
+
+services:
+  - type: web
+    name: kyromail
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: waitress-serve --host=0.0.0.0 --port=$PORT app:app
+    healthCheckPath: /
+    envVars:
+      - key: KYROMAIL_DATABASE
+        value: /data/kyromail.sqlite3
+      - key: KYROMAIL_HTTPS
+        value: "1"
+      - key: KYROMAIL_SECRET_KEY
+        generateValue: true
+      # Domaine interne des adresses de compte. Décommentez une fois le
+      # service SMTP réel connecté (sinon les adresses ne sont pas réellement
+      # délivrées et l'interface le signale).
+      # - key: KYROMAIL_DOMAIN
+      #   value: kyromail.fr
+      - key: KYROMAIL_ADMIN_EMAIL
+        sync: false
+      - key: KYROMAIL_ADMIN_PASSWORD
+        sync: false
+      - key: KYROMAIL_ADMIN_NAME
+        sync: false
+    disk:
+      name: kyromail-data
+      mountPath: /data
+      sizeGB: 1

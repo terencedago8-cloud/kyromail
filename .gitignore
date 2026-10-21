@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# KyroMail - données et secrets (jamais versionnés)
+instance/*
+!instance/.gitkeep
+*.sqlite3
+*.sqlite3-journal
+*.db
+.env
+.env.*
+!.env.example
+
+# Éditeurs / système
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+*.log

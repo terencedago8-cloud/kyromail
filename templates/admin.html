@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+
+{% block title %}Administration — KyroMail{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Panneau administrateur</h1>
+    <p class="muted">Comptes, statistiques, règles d'accès et journal des actions.</p>
+  </div>
+</div>
+
+<nav class="tabs" aria-label="Sections d'administration">
+  <a class="tab {{ 'active' if tab == 'overview' }}" href="{{ url_for('admin', tab='overview') }}">Vue d'ensemble</a>
+  <a class="tab {{ 'active' if tab == 'users' }}" href="{{ url_for('admin', tab='users') }}">Utilisateurs</a>
+  <a class="tab {{ 'active' if tab == 'rules' }}" href="{{ url_for('admin', tab='rules') }}">Règles d'accès</a>
+  <a class="tab {{ 'active' if tab == 'log' }}" href="{{ url_for('admin', tab='log') }}">Journal</a>
+</nav>
+
+{# ---------------------------------------------------------------- -- #}
+{% if tab == 'overview' %}
+  <section class="stat-grid">
+    <article class="stat-card">
+      <span class="stat-label">Comptes</span>
+      <strong class="stat-value">{{ stats.users_total }}</strong>
+      <span class="muted">{{ stats.users_active }} actif(s) &middot; {{ stats.users_disabled }} désactivé(s)</span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-label">Messages</span>
+      <strong class="stat-value">{{ stats.messages_total }}</strong>
+      <span class="muted">{{ stats.messages_week }} sur les 7 derniers jours</span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-label">Non lus</span>
+      <strong class="stat-value">{{ stats.messages_unread }}</strong>
+      <span class="muted">messages en attente de lecture</span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-label">Aujourd'hui</span>
+      <strong class="stat-value">{{ stats.messages_today }}</strong>
+      <span class="muted">messages envoyés aujourd'hui</span>
+    </article>
+    <article class="stat-card">
+      <span class="stat-label">Actions journalisées</span>
+      <strong class="stat-value">{{ stats.log_total }}</strong>
+      <span class="muted">actions administratives enregistrées</span>
+    </article>
+  </section>
+
+  <section class="card-block">
+    <div class="card-block-head">
+      <h2>Répartition des comptes par rôle</h2>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('admin', tab='users') }}">Gérer les comptes</a>
+    </div>
+    <ul class="role-bars">
+      {% for row in stats.by_role %}
+        <li>
+          <span class="role-bar-label">
+            <span class="badge badge--role badge--{{ row.key }}">{{ row.label }}</span>
+          </span>
+          <span class="role-bar-track">
+            <span class="role-bar-fill"
+                  style="width: {{ (row.total * 100 / stats.users_total)|round|int if stats.users_total else 0 }}%"></span>
+          </span>
+          <span class="role-bar-value">{{ row.total }} compte(s) &middot; {{ row.active }} actif(s)</span>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
+{# ---------------------------------------------------------------- -- #}
+{% if tab == 'users' %}
+  <details class="panel" open>
+    <summary>Créer un compte utilisateur</summary>
+    <form class="form-card form-card--inner" method="post" action="{{ url_for('admin_create_user') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+
+      <div class="form-grid">
+        <div class="field">
+          <label for="new_name">Nom complet</label>
+          <input id="new_name" name="full_name" type="text" maxlength="80" required
+                 placeholder="Ex. : Marie Dupont">
+        </div>
+        <div class="field">
+          <label for="new_email">Adresse mail</label>
+          <input id="new_email" name="email" type="text" maxlength="120"
+                 placeholder="Laisser vide : génération automatique">
+          <p class="form-hint">Domaine interne : <code>@{{ internal_domain }}</code></p>
+        </div>
+        <div class="field">
+          <label for="new_password">Mot de passe</label>
+          <input id="new_password" name="password" type="text" minlength="8" required
+                 placeholder="8 caractères minimum, lettre + chiffre">
+        </div>
+        <div class="field">
+          <label for="new_role">Rôle</label>
+          <select id="new_role" name="role" required>
+            {% for key, label in roles.items() %}
+              <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+
+      <label class="checkbox">
+        <input type="checkbox" name="active" value="1" checked>
+        <span>Compte actif (l'utilisateur pourra se connecter)</span>
+      </label>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Créer le compte</button>
+      </div>
+    </form>
+  </details>
+
+  <div class="toolbar">
+    <form class="search-form" method="get" action="{{ url_for('admin', tab='users') }}">
+      <input type="search" name="q" value="{{ q }}" placeholder="Rechercher un nom, une adresse ou un rôle…">
+      <input type="hidden" name="tab" value="users">
+      <button class="btn btn-ghost" type="submit">Rechercher</button>
+      {% if q %}
+        <a class="btn btn-ghost" href="{{ url_for('admin', tab='users') }}">Effacer</a>
+      {% endif %}
+    </form>
+    <span class="muted">{{ users|length }} compte(s)</span>
+  </div>
+
+  {% if users %}
+    <div class="table-wrap">
+      <table class="data">
+        <thead>
+          <tr>
+            <th>Nom</th>
+            <th>Adresse</th>
+            <th>Rôle</th>
+            <th>État</th>
+            <th>Dernière connexion</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for person in users %}
+            {% set is_me = person.id == current_user.id %}
+            <tr class="{{ 'row-inactive' if not person.active }}">
+              <td>
+                <span class="cell-user">
+                  <span class="avatar avatar--blue">{{ person.full_name[:2]|upper }}</span>
+                  <strong>{{ person.full_name }}</strong>
+                </span>
+              </td>
+              <td class="mono">{{ person.email }}</td>
+              <td><span class="badge badge--role badge--{{ person.role }}">{{ roles[person.role] }}</span></td>
+              <td>
+                <span class="tag {{ 'tag--read' if person.active else 'tag--off' }}">
+                  {{ 'Actif' if person.active else 'Désactivé' }}
+                </span>
+              </td>
+              <td>{{ person.last_login|dt }}</td>
+              <td class="col-actions">
+                <div class="action-row">
+                  <details class="inline-edit">
+                    <summary class="btn btn-ghost btn-sm">Modifier</summary>
+                    <div class="inline-edit-body">
+                      <form method="post" action="{{ url_for('admin_update_user', user_id=person.id) }}">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-grid">
+                          <div class="field">
+                            <label for="name_{{ person.id }}">Nom complet</label>
+                            <input id="name_{{ person.id }}" name="full_name" type="text"
+                                   maxlength="80" required value="{{ person.full_name }}"
+                                   {{ 'disabled' if is_me else '' }}>
+                          </div>
+                          <div class="field">
+                            <label for="email_{{ person.id }}">Adresse mail</label>
+                            <input id="email_{{ person.id }}" name="email" type="text"
+                                   maxlength="120" required value="{{ person.email }}"
+                                   {{ 'disabled' if is_me else '' }}>
+                          </div>
+                          <div class="field">
+                            <label for="role_{{ person.id }}">Rôle</label>
+                            <select id="role_{{ person.id }}" name="role" {{ 'disabled' if is_me else '' }}>
+                              {% for key, label in roles.items() %}
+                                <option value="{{ key }}" {{ 'selected' if person.role == key else '' }}>
+                                  {{ label }}
+                                </option>
+                              {% endfor %}
+                            </select>
+                          </div>
+                          <div class="field">
+                            <label>État</label>
+                            <label class="checkbox">
+                              <input type="checkbox" name="active" value="1"
+                                     {{ 'checked' if person.active else '' }} {{ 'disabled' if is_me else '' }}>
+                              <span>Compte actif</span>
+                            </label>
+                          </div>
+                        </div>
+                        <div class="form-actions">
+                          <button class="btn btn-primary btn-sm" type="submit"
+                                  {{ 'disabled' if is_me else '' }}>
+                            Enregistrer
+                          </button>
+                          {% if is_me %}
+                            <span class="muted">Votre propre compte ne peut pas être modifié ici.</span>
+                          {% endif %}
+                        </div>
+                      </form>
+
+                      <form method="post"
+                            action="{{ url_for('admin_reset_password', user_id=person.id) }}"
+                            class="reset-form">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <div class="field">
+                          <label for="pwd_{{ person.id }}">Nouveau mot de passe</label>
+                          <input id="pwd_{{ person.id }}" name="password" type="text"
+                                 minlength="8" required placeholder="8 caractères minimum, lettre + chiffre">
+                        </div>
+                        <div class="form-actions">
+                          <button class="btn btn-ghost btn-sm" type="submit">Réinitialiser le mot de passe</button>
+                        </div>
+                      </form>
+                    </div>
+                  </details>
+
+                  <form method="post" action="{{ url_for('admin_update_user', user_id=person.id) }}"
+                        {{ 'data-confirm="Désactiver ce compte ?"' if person.active and not is_me else '' }}>
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="full_name" value="{{ person.full_name }}">
+                    <input type="hidden" name="email" value="{{ person.email }}">
+                    <input type="hidden" name="role" value="{{ person.role }}">
+                    <input type="hidden" name="active" value="{{ '0' if person.active else '1' }}">
+                    <button class="btn btn-sm {{ 'btn-danger-ghost' if person.active else 'btn-ghost' }}"
+                            type="submit" {{ 'disabled' if is_me else '' }}>
+                      {{ 'Désactiver' if person.active else 'Activer' }}
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty-state">
+      <span class="empty-icon">&#128101;</span>
+      <h2>Aucun compte trouvé</h2>
+      <p class="muted">
+        {% if q %}Aucun résultat pour «&nbsp;{{ q }}&nbsp;».{% else %}Créez le premier compte avec
+        le formulaire ci-dessus.{% endif %}
+      </p>
+    </div>
+  {% endif %}
+{% endif %}
+
+{# ---------------------------------------------------------------- -- #}
+{% if tab == 'rules' %}
+  <section class="card-block">
+    <div class="card-block-head">
+      <h2>Règles d'accès entre les rôles</h2>
+    </div>
+    <p class="muted">
+      Cochez les combinaisons autorisées : une ligne = rôle expéditeur, une colonne =
+      rôle destinataire. L'administrateur reste toujours autorisé à communiquer avec
+      tout le monde.
+    </p>
+
+    <form method="post" action="{{ url_for('admin_save_rules') }}">
+      <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+      <div class="table-wrap">
+        <table class="data data--rules">
+          <thead>
+            <tr>
+              <th class="rules-corner">Expéditeur \ Destinataire</th>
+              {% for key, label in roles.items() %}
+                <th>{{ label }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for src_key, src_label in roles.items() %}
+              <tr>
+                <th scope="row">
+                  <span class="badge badge--role badge--{{ src_key }}">{{ src_label }}</span>
+                </th>
+                {% for dst_key, dst_label in roles.items() %}
+                  <td class="rules-cell">
+                    <input type="checkbox" name="rule_{{ src_key }}_{{ dst_key }}" value="1"
+                           {{ 'checked' if rules[(src_key, dst_key)] else '' }}>
+                  </td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-primary" type="submit">Enregistrer les règles</button>
+      </div>
+    </form>
+  </section>
+{% endif %}
+
+{# ---------------------------------------------------------------- -- #}
+{% if tab == 'log' %}
+  <section class="card-block">
+    <div class="card-block-head">
+      <h2>Journal des actions administratives</h2>
+      <span class="muted">{{ logs|length }} entrée(s) affichée(s)</span>
+    </div>
+
+    {% if logs %}
+      <ul class="log-list">
+        {% for entry in logs %}
+          <li>
+            <span class="log-time">{{ entry.created_at|dt }}</span>
+            <span class="log-action">{{ entry.action }}</span>
+            <span class="log-detail">
+              {{ entry.detail }}
+              <em class="muted">— {{ entry.admin_name or 'Système / CLI' }}</em>
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="empty-state">
+        <span class="empty-icon">&#128220;</span>
+        <h2>Journal vide</h2>
+        <p class="muted">Les actions administratives importantes s'afficheront ici.</p>
+      </div>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}
