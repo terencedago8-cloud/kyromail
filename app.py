@@ -266,6 +266,23 @@ def db_label() -> str:
     return app.config["DATABASE"]
 
 
+def _pg_connect(**kwargs):
+    """Connexion PostgreSQL commune (compatible direct ou pooler Supabase).
+
+    `prepare_threshold=0` évite les requêtes préparées, non compatibles avec
+    les poolers en mode transaction (PgBouncer). `connect_timeout` évite de
+    bloquer le démarrage si la base est injoignable.
+    """
+    options = {
+        "autocommit": True,
+        "application_name": "kyromail",
+        "prepare_threshold": 0,
+        "connect_timeout": 15,
+    }
+    options.update(kwargs)
+    return psycopg.connect(DB_URL, **options)
+
+
 def get_db():
     if "db" not in g:
         if USE_POSTGRES:
@@ -274,12 +291,7 @@ def get_db():
                     "KYROMAIL_DATABASE_URL est défini mais psycopg est absent "
                     '(: pip install "psycopg[binary]").'
                 )
-            g.db = psycopg.connect(
-                DB_URL,
-                row_factory=dict_row,
-                autocommit=True,
-                application_name="kyromail",
-            )
+            g.db = _pg_connect(row_factory=dict_row)
         else:
             g.db = sqlite3.connect(app.config["DATABASE"])
             g.db.row_factory = sqlite3.Row
@@ -331,11 +343,11 @@ def init_db(force: bool = False) -> None:
         if not PSYCOPG_AVAILABLE:
             raise RuntimeError('psycopg absent : pip install "psycopg[binary]".')
         if force:
-            with psycopg.connect(DB_URL, autocommit=True) as conn:
+            with _pg_connect() as conn:
                 conn.execute(
                     "DROP TABLE IF EXISTS admin_log, access_rules, messages, users CASCADE"
                 )
-        with psycopg.connect(DB_URL, autocommit=True) as conn:
+        with _pg_connect() as conn:
             for statement in SCHEMA_POSTGRES.split(";"):
                 statement = statement.strip()
                 if statement:
@@ -375,7 +387,7 @@ def tables_ready() -> bool:
         if not PSYCOPG_AVAILABLE:
             return False
         try:
-            with psycopg.connect(DB_URL, autocommit=True) as conn:
+            with _pg_connect() as conn:
                 row = conn.execute(
                     "SELECT 1 FROM information_schema.tables "
                     "WHERE table_schema = current_schema() AND table_name = 'users'"
