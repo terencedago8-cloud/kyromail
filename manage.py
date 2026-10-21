@@ -24,6 +24,7 @@ from app import (
     ROLES,
     app,
     create_user,
+    db_label,
     execute,
     find_user_by_email,
     generate_password_hash,
@@ -58,7 +59,7 @@ def _prompt_password(confirm: bool = True) -> str:
 
 def cmd_init_db(args) -> None:
     init_db(force=args.force)
-    print(f"Base de données prête : {app.config['DATABASE']}")
+    print(f"Base de données prête : {db_label()}")
     if args.force:
         print("Ancienne base supprimée puis recréée (--force).")
 

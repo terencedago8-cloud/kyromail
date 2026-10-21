@@ -48,7 +48,7 @@ KyroMail/
     └── secret_key       # Clé de session (ignorée par git)
 ```
 
-### Modèle de données (SQLite)
+### Modèle de données (SQLite en local, PostgreSQL en ligne)
 
 * `users` : id, full_name, email (unique), password_hash, role, active, created_at, updated_at, last_login
 * `messages` : id, sender_id, recipient_id, subject, body, sent_at, read_at, deleted_by_sender, deleted_by_recipient
@@ -261,28 +261,41 @@ git push -u origin main
 > `.gitignore` exclut déjà `instance/*` (base de données et clé secrète) :
 > aucun secret n'est poussé sur Git.
 
-### 9.2 Déploiement sur Render (recommandé)
+### 9.2 Déploiement 100 % gratuit : Render (site) + Supabase (base PostgreSQL)
 
-1. Connectez-vous sur <https://render.com> → **New → Blueprint** → sélectionnez
-   votre dépôt GitHub (Render lit `render.yaml` automatiquement).
-2. **Plan** : choisissez **Starter** (ou supérieur). *Le plan gratuit ne
-   possède pas de disque persistant : SQLite serait effacé à chaque
-   déploiement.*
-3. Dans les variables d'environnement proposées, renseignez **une seule fois** :
+Le plan gratuit de Render ne fournit **pas** de disque persistant : la base
+PostgreSQL est donc hébergée chez un fournisseur gratuit (**Supabase**, 500 Mo
+inclus — **Neon** fonctionne aussi). L'application accepte les deux bases :
+SQLite en local, PostgreSQL dès que `KYROMAIL_DATABASE_URL` est défini.
+
+1. **Base PostgreSQL** : <https://supabase.com> → *Continue with GitHub* →
+   créez une organisation (plan **Free**) puis un projet (**Région** : Americas,
+   désactivez l'« Enable Data API »). Dans **Project Settings → Database →
+   Connection string → URI**, copiez la chaîne de **connexion directe** (port
+   `5432`, hébergeant `db.xxxxx.supabase.co`).
+2. Sur <https://render.com> → **New → Blueprint** → sélectionnez le dépôt
+   GitHub (Render lit `render.yaml` automatiquement ; le blueprint est déjà sur
+   le **plan gratuit**).
+3. Dans les variables d'environnement proposées, renseignez :
+   * `KYROMAIL_DATABASE_URL` = la chaîne copiée à l'étape 1 (port `5432`)
    * `KYROMAIL_ADMIN_EMAIL` = ex. `admin@kyromail.fr`
    * `KYROMAIL_ADMIN_PASSWORD` = mot de passe fort (8 caractères min., lettre +
      chiffre)
    * `KYROMAIL_ADMIN_NAME` = ex. `Administrateur KyroMail`
-   (`KYROMAIL_SECRET_KEY` est généré par Render ; `KYROMAIL_HTTPS=1` et
-   `KYROMAIL_DATABASE=/data/kyromail.sqlite3` sont définis dans le blueprint.)
-4. Vérifiez que le **disque** `kyromail-data` est bien monté sur `/data`.
-5. Laissez Render construire et démarrer (`waitress-serve --host=0.0.0.0
+   (`KYROMAIL_SECRET_KEY` est généré par Render ; `KYROMAIL_HTTPS=1` est déjà
+   défini dans le blueprint.)
+4. Laissez Render construire et démarrer (`waitress-serve --host=0.0.0.0
    --port=$PORT app:app`). Ouvrez l'URL provisoire
-   `https://kyromail-xxxx.onrender.com` : le site doit répondre.
-6. Connectez-vous avec l'administrateur créé, créez les autres comptes, puis
+   `https://kyromail-xxxx.onrender.com` : le site doit répondre. Au premier
+   démarrage, `bootstrap()` crée la table et le premier administrateur.
+5. Connectez-vous avec l'administrateur créé, créez les autres comptes, puis
    **supprimez `KYROMAIL_ADMIN_EMAIL` et `KYROMAIL_ADMIN_PASSWORD`** des
    variables d'environnement (et redéployez) : ces secrets ne doivent plus
    traîner.
+
+> Le site gratuit de Render **s'endormit après 15 minutes** d'inactivité : le
+> premier appel suivant met 20 à 60 s à répondre (réveil automatique), puis
+> tout est normal.
 
 ### 9.3 Ajouter le domaine mail.kyromail.fr
 
@@ -300,13 +313,15 @@ git push -u origin main
    **https://mail.kyromail.fr** : le certificat HTTPS est émis automatiquement
    (Let's Encrypt) par Render.
 
-### 9.4 Variante Railway
+### 9.4 Variante Railway (payante, avec disque)
 
 1. <https://railway.app> → **New Project → Deploy from GitHub repo**.
-2. **Volumes → Add Volume** : mount path `/data`.
+2. **Volumes → Add Volume** : mount path `/data` (nécessite un plan payant).
 3. Variables d'environnement :
    `KYROMAIL_DATABASE=/data/kyromail.sqlite3`, `KYROMAIL_HTTPS=1`,
    `KYROMAIL_SECRET_KEY` (généré), `KYROMAIL_ADMIN_*` (premier démarrage).
+   *Alternative* : définissez `KYROMAIL_DATABASE_URL` (PostgreSQL managé) et
+   laissez SQLite de côté, comme sur Render gratuit.
 4. Le `startCommand` de `railway.json` est utilisé automatiquement.
 5. **Settings → Networking → Custom Domain** → `mail.kyromail.fr`, puis
    créez le CNAME correspondant chez votre registrar.
@@ -323,15 +338,20 @@ git push -u origin main
 * **Sécurité** : HTTPS forcé (`KYROMAIL_HTTPS=1` → cookie de session
   `Secure`), `SECRET_KEY` en variable d'environnement (jamais dans le dépôt),
   sessions expirant après 8 h, mots de passe hachés.
-* **Sauvegardes** : activez les snapshots de disque (Render) ou les backups de
-  volume (Railway) **et** testez régulièrement une restauration. Export
-  manuel possible depuis la console du service :
-  `sqlite3 /data/kyromail.sqlite3 ".backup /data/sauvegarde.sqlite3"`.
+* **Sauvegardes** :
+  * *PostgreSQL (Supabase / Neon)* : les sauvegardes automatiques sont incluses
+    dans le plan gratuit ; pour une exportation manuelle :
+    `pg_dump "$KYROMAIL_DATABASE_URL" --no-owner > sauvegarde.sql`.
+  * *SQLite (local / Railway avec disque)* : copie régulière du fichier
+    `sqlite3 instance/kyromail.sqlite3 ".backup sauvegarde.sqlite3"`.
+  Testez régulièrement une restauration.
 * **Confidentialité / mineurs** : avant ouverture aux élèves, validez la
   finalité, la durée de conservation, l'information des responsables légaux et
   l'inscription au registre des traitements (voir § 7).
-* **Coûts** : Render Starter ≈ 7 $/mois + disque, Railway Hobby ≈ 5 $/mois
-  avec volume. Un domaine `.fr` coûte ≈ 10 €/an.
+* **Coûts** : configuration retenue ici = **0 €/mois** (Render gratuit +
+  Supabase gratuit, 500 Mo de base). Un palier payant reste possible plus tard :
+  Render Starter ≈ 7 $/mois + disque (SQLite persistante), Railway Hobby ≈
+  5 $/mois. Un domaine `.fr` coûte ≈ 10 €/an.
 
 ---
 

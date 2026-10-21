@@ -5,3 +5,7 @@ Werkzeug>=3.0,<4.0
 
 # Serveur WSGI de production (utilisé par Render / Railway / waitress-serve)
 waitress>=3.0
+
+# Client PostgreSQL (utilisé uniquement si KYROMAIL_DATABASE_URL est défini :
+# hébergement gratuit Render + Neon/Supabase ; SQLite reste le défaut local)
+psycopg[binary]>=3.1

@@ -26,6 +26,7 @@ import secrets
 import sqlite3
 import time
 import unicodedata
+import urllib.parse
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -81,6 +82,25 @@ INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 DEFAULT_DB = os.path.join(INSTANCE_DIR, "kyromail.sqlite3")
 DB_PATH = os.environ.get("KYROMAIL_DATABASE", DEFAULT_DB)
 
+# Base de données : SQLite par défaut (local), PostgreSQL si une URL est fournie
+# (cas Render / Railway : KYROMAIL_DATABASE_URL=postgresql://…).
+DB_URL = os.environ.get("KYROMAIL_DATABASE_URL", "").strip()
+USE_POSTGRES = bool(DB_URL)
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+
+    PSYCOPG_AVAILABLE = True
+except ImportError:  # psycopg absent : on reste utilisable en SQLite
+    psycopg = None
+    dict_row = None
+    PSYCOPG_AVAILABLE = False
+
+DB_ERRORS: tuple = (sqlite3.Error,)
+if PSYCOPG_AVAILABLE:
+    DB_ERRORS = (sqlite3.Error, psycopg.Error)
+
 # Stocke les tentatives de connexion échouées (protection simple anti force brute
 # en développement mono-processus ; en production utiliser un limiteur dédié).
 _LOGIN_FAILURES: dict[str, tuple[int, float]] = {}
@@ -127,7 +147,7 @@ app.config.update(
 # Schéma de la base de données
 # ---------------------------------------------------------------------------
 
-SCHEMA = """
+SCHEMA_SQLITE = """
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     full_name     TEXT    NOT NULL,
@@ -174,16 +194,96 @@ CREATE TABLE IF NOT EXISTS admin_log (
 );
 """
 
+# Équivalent PostgreSQL (Render / Railway) : mêmes tables, mêmes colonnes.
+SCHEMA_POSTGRES = """
+CREATE TABLE IF NOT EXISTS users (
+    id            SERIAL PRIMARY KEY,
+    full_name     TEXT    NOT NULL,
+    email         TEXT    NOT NULL,
+    password_hash TEXT    NOT NULL,
+    role          TEXT    NOT NULL CHECK (role IN
+                    ('admin','direction','professeur','surveillant','eleve')),
+    active        INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT    NOT NULL,
+    updated_at    TEXT    NOT NULL,
+    last_login    TEXT,
+    CONSTRAINT users_email_key UNIQUE (email)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email));
+
+CREATE TABLE IF NOT EXISTS messages (
+    id                   SERIAL PRIMARY KEY,
+    sender_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    recipient_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    subject              TEXT    NOT NULL,
+    body                 TEXT    NOT NULL,
+    sent_at              TEXT    NOT NULL,
+    read_at              TEXT,
+    deleted_by_sender    INTEGER NOT NULL DEFAULT 0,
+    deleted_by_recipient INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_recipient
+    ON messages (recipient_id, deleted_by_recipient, sent_at);
+CREATE INDEX IF NOT EXISTS idx_messages_sender
+    ON messages (sender_id, deleted_by_sender, sent_at);
+
+CREATE TABLE IF NOT EXISTS access_rules (
+    from_role TEXT    NOT NULL,
+    to_role   TEXT    NOT NULL,
+    allowed   INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY (from_role, to_role)
+);
+
+CREATE TABLE IF NOT EXISTS admin_log (
+    id         SERIAL PRIMARY KEY,
+    admin_id   INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    action     TEXT NOT NULL,
+    detail     TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+);
+"""
+
 # ---------------------------------------------------------------------------
 # Accès à la base de données (requêtes paramétrées uniquement)
 # ---------------------------------------------------------------------------
 
 
-def get_db() -> sqlite3.Connection:
+def _adapt(sql: str) -> str:
+    """SQLite utilise « ? » ; PostgreSQL utilise « %s » (SQL identique sinon)."""
+    return sql.replace("?", "%s") if USE_POSTGRES else sql
+
+
+def db_label() -> str:
+    """Affiche la base utilisée sans jamais exposer le mot de passe SQL."""
+    if USE_POSTGRES:
+        try:
+            host = urllib.parse.urlsplit(DB_URL).hostname or "PostgreSQL"
+        except ValueError:
+            host = "PostgreSQL"
+        return f"PostgreSQL ({host})"
+    return app.config["DATABASE"]
+
+
+def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(app.config["DATABASE"])
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        if USE_POSTGRES:
+            if not PSYCOPG_AVAILABLE:
+                raise RuntimeError(
+                    "KYROMAIL_DATABASE_URL est défini mais psycopg est absent "
+                    '(: pip install "psycopg[binary]").'
+                )
+            g.db = psycopg.connect(
+                DB_URL,
+                row_factory=dict_row,
+                autocommit=True,
+                application_name="kyromail",
+            )
+        else:
+            g.db = sqlite3.connect(app.config["DATABASE"])
+            g.db.row_factory = sqlite3.Row
+            g.db.execute("PRAGMA foreign_keys = ON")
     return g.db
 
 
@@ -195,7 +295,7 @@ def close_db(exception=None) -> None:
 
 
 def query(sql: str, args: tuple = (), one: bool = False):
-    cur = get_db().execute(sql, args)
+    cur = get_db().execute(_adapt(sql), args)
     rows = cur.fetchall()
     cur.close()
     if one:
@@ -203,21 +303,52 @@ def query(sql: str, args: tuple = (), one: bool = False):
     return rows
 
 
-def execute(sql: str, args: tuple = ()):
+def execute(sql: str, args: tuple = (), returning_id: bool = False):
     db = get_db()
-    cur = db.execute(sql, args)
+    if USE_POSTGRES and returning_id:
+        sql = sql.rstrip().rstrip(";") + " RETURNING id"
+    cur = db.execute(_adapt(sql), args)
     db.commit()
-    row_id = cur.lastrowid
+    row_id = None
+    if USE_POSTGRES:
+        if cur.description is not None:
+            first = cur.fetchone()
+            if first is not None and "id" in first:
+                row_id = first["id"]
+    else:
+        row_id = cur.lastrowid
     cur.close()
     return row_id
 
 
 def db_exists() -> bool:
-    return os.path.exists(app.config["DATABASE"])
+    return tables_ready()
 
 
 def init_db(force: bool = False) -> None:
     """Crée la base (et les règles d'accès par défaut) de façon idempotente."""
+    if USE_POSTGRES:
+        if not PSYCOPG_AVAILABLE:
+            raise RuntimeError('psycopg absent : pip install "psycopg[binary]".')
+        if force:
+            with psycopg.connect(DB_URL, autocommit=True) as conn:
+                conn.execute(
+                    "DROP TABLE IF EXISTS admin_log, access_rules, messages, users CASCADE"
+                )
+        with psycopg.connect(DB_URL, autocommit=True) as conn:
+            for statement in SCHEMA_POSTGRES.split(";"):
+                statement = statement.strip()
+                if statement:
+                    conn.execute(statement)
+            for src in ROLE_KEYS:
+                for dst in ROLE_KEYS:
+                    conn.execute(
+                        "INSERT INTO access_rules (from_role, to_role, allowed) "
+                        "VALUES (%s, %s, 1) ON CONFLICT DO NOTHING",
+                        (src, dst),
+                    )
+        return
+
     path = app.config["DATABASE"]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if force and os.path.exists(path):
@@ -225,7 +356,7 @@ def init_db(force: bool = False) -> None:
 
     db = sqlite3.connect(path)
     try:
-        db.executescript(SCHEMA)
+        db.executescript(SCHEMA_SQLITE)
         for src in ROLE_KEYS:
             for dst in ROLE_KEYS:
                 db.execute(
@@ -240,7 +371,20 @@ def init_db(force: bool = False) -> None:
 
 def tables_ready() -> bool:
     """Vérifie la présence de la table users (sans dépendre du contexte Flask)."""
-    if not db_exists():
+    if USE_POSTGRES:
+        if not PSYCOPG_AVAILABLE:
+            return False
+        try:
+            with psycopg.connect(DB_URL, autocommit=True) as conn:
+                row = conn.execute(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = current_schema() AND table_name = 'users'"
+                ).fetchone()
+        except psycopg.Error:
+            return False
+        return row is not None
+
+    if not os.path.exists(app.config["DATABASE"]):
         return False
     try:
         probe = sqlite3.connect(app.config["DATABASE"])
@@ -377,6 +521,7 @@ def create_user(full_name: str, email: str, password: str, role: str,
             now_iso(),
             now_iso(),
         ),
+        returning_id=True,
     )
 
 
@@ -490,7 +635,7 @@ def load_user() -> None:
         return
     try:
         user = get_user(int(user_id))
-    except (sqlite3.Error, ValueError, TypeError):
+    except (ValueError, TypeError) + DB_ERRORS:
         user = None
     if user is None or not user["active"]:
         session.clear()
@@ -602,7 +747,7 @@ def inject_globals():
     user = getattr(g, "user", None)
     try:
         badge = unread_count(user["id"]) if user else 0
-    except sqlite3.Error:
+    except DB_ERRORS:
         badge = 0
     return {
         "csrf_token": generate_csrf,
@@ -693,10 +838,15 @@ def logout():
 
 
 def _search_filter(value: str) -> str:
-    """Échappe les caractères spéciaux LIKE (%, _, \\)."""
-    return (
+    """Échappe les caractères spéciaux LIKE (%, _, \\) et passe en minuscules.
+
+    Les comparaisons utilisent ensuite LOWER(colonne) LIKE ?, comportement
+    identique sur SQLite (insensible à la casse) et PostgreSQL.
+    """
+    escaped = (
         value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     )
+    return escaped.lower()
 
 
 @app.route("/inbox")
@@ -723,8 +873,9 @@ def inbox():
     if q:
         like = f"%{_search_filter(q)}%"
         sql += (
-            " AND (m.subject LIKE ? ESCAPE '\\' OR m.body LIKE ? ESCAPE '\\' "
-            "OR u.full_name LIKE ? ESCAPE '\\')"
+            " AND (LOWER(m.subject) LIKE ? ESCAPE '\\' "
+            "OR LOWER(m.body) LIKE ? ESCAPE '\\' "
+            "OR LOWER(u.full_name) LIKE ? ESCAPE '\\')"
         )
         params.extend([like, like, like])
 
@@ -733,7 +884,7 @@ def inbox():
 
     try:
         unread_inbox = unread_count(g.user["id"])
-    except sqlite3.Error:
+    except DB_ERRORS:
         unread_inbox = 0
 
     return render_template(
@@ -760,8 +911,9 @@ def sent():
     if q:
         like = f"%{_search_filter(q)}%"
         sql += (
-            " AND (m.subject LIKE ? ESCAPE '\\' OR m.body LIKE ? ESCAPE '\\' "
-            "OR u.full_name LIKE ? ESCAPE '\\')"
+            " AND (LOWER(m.subject) LIKE ? ESCAPE '\\' "
+            "OR LOWER(m.body) LIKE ? ESCAPE '\\' "
+            "OR LOWER(u.full_name) LIKE ? ESCAPE '\\')"
         )
         params.extend([like, like, like])
 
@@ -976,7 +1128,7 @@ def profile():
 def api_unread_count():
     try:
         count = unread_count(g.user["id"])
-    except sqlite3.Error:
+    except DB_ERRORS:
         count = 0
     return jsonify({"unread": count})
 
@@ -989,7 +1141,9 @@ def api_unread_count():
 def admin_stats() -> dict:
     def scalar(sql: str, args: tuple = ()) -> int:
         row = query(sql, args, one=True)
-        return int(row[0]) if row else 0
+        if not row:
+            return 0
+        return int(row[0] if not USE_POSTGRES else next(iter(row.values())))
 
     by_role = {
         row["role"]: {"total": int(row["total"]), "active": int(row["active"] or 0)}
@@ -1039,8 +1193,8 @@ def admin():
         if q:
             like = f"%{_search_filter(q)}%"
             users = query(
-                "SELECT * FROM users WHERE full_name LIKE ? ESCAPE '\\' "
-                "OR email LIKE ? ESCAPE '\\' OR role LIKE ? ESCAPE '\\' "
+                "SELECT * FROM users WHERE LOWER(full_name) LIKE ? ESCAPE '\\' "
+                "OR LOWER(email) LIKE ? ESCAPE '\\' OR LOWER(role) LIKE ? ESCAPE '\\' "
                 "ORDER BY active DESC, full_name",
                 (like, like, like),
             )
@@ -1176,18 +1330,16 @@ def admin_reset_password(user_id: int):
 @admin_required
 def admin_save_rules():
     updated = 0
-    db = get_db()
     for src in ROLE_KEYS:
         for dst in ROLE_KEYS:
             allowed = 1 if request.form.get(f"rule_{src}_{dst}") else 0
-            db.execute(
+            execute(
                 "INSERT INTO access_rules (from_role, to_role, allowed) "
                 "VALUES (?, ?, ?) ON CONFLICT(from_role, to_role) "
                 "DO UPDATE SET allowed = excluded.allowed",
                 (src, dst, allowed),
             )
             updated += 1
-    db.commit()
     log_action("Mise à jour des règles d'accès", f"{updated} paires enregistrées")
     flash("Règles d'accès enregistrées.", "success")
     return redirect(url_for("admin", tab="rules"))
@@ -1212,7 +1364,7 @@ def bootstrap() -> None:
     """
     if not tables_ready():
         init_db()
-        print(f"[KyroMail] Base de données initialisée : {app.config['DATABASE']}")
+        print(f"[KyroMail] Base de données initialisée : {db_label()}")
 
     email = normalize_email(os.environ.get("KYROMAIL_ADMIN_EMAIL", ""))
     password = os.environ.get("KYROMAIL_ADMIN_PASSWORD", "")
